@@ -41,7 +41,10 @@ def get_hog_features(img, orient, pix_per_cell, cell_per_block,
 # Define a function to compute binned color features  
 def bin_spatial(img, size=(32, 32)):
     # Use cv2.resize().ravel() to create the feature vector
-    features = cv2.resize(img, size).ravel() 
+    if img.shape == size:
+        features = img.ravel()
+    else:
+        features = cv2.resize(img, size).ravel() 
     # Return the feature vector
     return features
 
@@ -49,9 +52,9 @@ def bin_spatial(img, size=(32, 32)):
 # NEED TO CHANGE bins_range if reading .png files with mpimg!
 def color_hist(img, nbins=32, bins_range=(0, 256)):
     # Compute the histogram of the color channels separately
-    channel1_hist = np.histogram(img[:,:,0], bins=nbins, range=bins_range)
-    channel2_hist = np.histogram(img[:,:,1], bins=nbins, range=bins_range)
-    channel3_hist = np.histogram(img[:,:,2], bins=nbins, range=bins_range)
+    channel1_hist = np.histogram(img[:,:,0], bins=nbins, range=bins_range, density=True)
+    channel2_hist = np.histogram(img[:,:,1], bins=nbins, range=bins_range, density=True)
+    channel3_hist = np.histogram(img[:,:,2], bins=nbins, range=bins_range, density=True)
     # Concatenate the histograms into a single feature vector
     hist_features = np.concatenate((channel1_hist[0], channel2_hist[0], channel3_hist[0]))
     # Return the individual histograms, bin_centers and feature vector
@@ -60,10 +63,12 @@ def color_hist(img, nbins=32, bins_range=(0, 256)):
 # Define a function to extract features from a single image window
 # This function is very similar to extract_features()
 # just for a single image rather than list of images
-def single_img_features(img, color_space='RGB', spatial_size=(32, 32),
+def single_img_features(img, color_space='RGB', patch_size=(64, 64), spatial_size=(32, 32),
                         hist_bins=32, orient=9, 
                         pix_per_cell=8, cell_per_block=2, hog_channel=0,
-                        spatial_feat=True, hist_feat=True, hog_feat=True):    
+                        spatial_feat=True, hist_feat=True, hog_feat=True):
+    if img.shape != patch_size:
+        img = cv2.resize(img, patch_size)
     #1) Define an empty list to receive features
     img_features = []
     #2) Apply color conversion if other than 'RGB'
@@ -109,7 +114,7 @@ def single_img_features(img, color_space='RGB', spatial_size=(32, 32),
 
 # Define a function to extract features from a list of images
 # Have this function call bin_spatial() and color_hist()
-def extract_features(imgs, color_space='RGB', spatial_size=(32, 32),
+def extract_features(imgs, color_space='RGB', patch_size=(64,64), spatial_size=(32, 32),
                         hist_bins=32, orient=9, 
                         pix_per_cell=8, cell_per_block=2, hog_channel=0,
                         spatial_feat=True, hist_feat=True, hog_feat=True):
@@ -118,8 +123,9 @@ def extract_features(imgs, color_space='RGB', spatial_size=(32, 32),
     # Iterate through the list of images
     for file in imgs:
         # Read in each one by one
-        image = mpimg.imread(file)
-        file_features = single_img_features(image, color_space=color_space, spatial_size=spatial_size,
+        image = cv2.cvtColor(cv2.imread(file), cv2.COLOR_BGR2RGB)
+        file_features = single_img_features(image, color_space=color_space, patch_size=patch_size,
+                                            spatial_size=spatial_size,
                                             hist_bins=hist_bins, orient=orient,
                                             pix_per_cell=pix_per_cell, cell_per_block=cell_per_block,
                                             hog_channel=hog_channel, spatial_feat=spatial_feat,
@@ -220,9 +226,9 @@ def search_windows(img, windows, clf, scaler, color_space='RGB',
 def add_heat(heatmap, bbox_list):
     # Iterate through list of bboxes
     for box in bbox_list:
-        # Add += 1 for all pixels inside each bbox
+        # Add += 1 for all pixels inside each bbox, or add the decision funciton output
         # Assuming each "box" takes the form ((x1, y1), (x2, y2))
-        heatmap[box[0][1]:box[1][1], box[0][0]:box[1][0]] += 1
+        heatmap[box[0][1]:box[1][1], box[0][0]:box[1][0]] += box[2]
 
     # Return updated heatmap
     return heatmap# Iterate through list of bboxes
@@ -233,7 +239,7 @@ def apply_threshold(heatmap, threshold):
     # Return thresholded map
     return heatmap
 
-def draw_labeled_bboxes(img, labels):
+def draw_labeled_bboxes(img, labels, heatmap):
     # Iterate through all detected cars
     for car_number in range(1, labels[1]+1):
         # Find pixels with each car_number label value
@@ -245,23 +251,26 @@ def draw_labeled_bboxes(img, labels):
         bbox = ((np.min(nonzerox), np.min(nonzeroy)), (np.max(nonzerox), np.max(nonzeroy)))
         # Draw the box on the image
         cv2.rectangle(img, bbox[0], bbox[1], (0,0,255), 6)
+        c = np.max(heatmap[bbox[0][1]:bbox[1][1],bbox[0][0]:bbox[1][0]])
+        conf = "{0:.3f}".format(c)
+        cv2.putText(img, conf, bbox[0], cv2.FONT_HERSHEY_PLAIN, 1.5, (255,0,0), 2)
     # Return the image
     return img
 
-def computeHeat(image, visualize=False):
+def computeHeatSingle(image, box_list, visualize=False):
     heat = np.zeros_like(image[:,:,0]).astype(np.float)
     # Add heat to each box in box list
     heat = add_heat(heat,box_list)
 
     # Apply threshold to help remove false positives
-    heat = apply_threshold(heat,1)
+    heat = apply_threshold(heat,0.1)
 
     # Visualize the heatmap when displaying    
     heatmap = np.clip(heat, 0, 255)
 
     # Find final boxes from heatmap using label function
     labels = label(heatmap)
-    draw_img = draw_labeled_bboxes(np.copy(image), labels)
+    draw_img = draw_labeled_bboxes(np.copy(image), labels, heatmap)
 
     if visualize:
         fig = plt.figure(figsize=(20,10))
@@ -272,6 +281,8 @@ def computeHeat(image, visualize=False):
         plt.imshow(heatmap, cmap='hot')
         plt.title('Heat Map')
         fig.tight_layout()
+        plt.show()
+    return draw_img
 
 
 def preprocessData(color_space = 'HSV', # Can be RGB, HSV, LUV, HLS, YUV, YCrCb
@@ -279,6 +290,7 @@ def preprocessData(color_space = 'HSV', # Can be RGB, HSV, LUV, HLS, YUV, YCrCb
           pix_per_cell = 8, # HOG pixels per cell
           cell_per_block = 2, # HOG cells per block
           hog_channel = 'ALL', # Can be 0, 1, 2, or "ALL"
+          patch_size = (64, 64),
           spatial_size = (16, 16), # Spatial binning dimensions
           hist_bins = 16,    # Number of histogram bins
           spatial_feat = True, # Spatial features on or off
@@ -286,7 +298,8 @@ def preprocessData(color_space = 'HSV', # Can be RGB, HSV, LUV, HLS, YUV, YCrCb
           hog_feat = True # HOG features on or off
 ):
     params = {'color_space':color_space, 'orient':orient, 'pix_per_cell':pix_per_cell,
-              'cell_per_block':cell_per_block, 'hog_channel':hog_channel, 'spatial_size':spatial_size,
+              'cell_per_block':cell_per_block, 'hog_channel':hog_channel, 'patch_size':patch_size,
+              'spatial_size':spatial_size,
               'hist_bins':hist_bins}
 
     cars = glob.glob('vehicles/**/*.png')
@@ -301,13 +314,13 @@ def preprocessData(color_space = 'HSV', # Can be RGB, HSV, LUV, HLS, YUV, YCrCb
 
     ### TODO: Tweak these parameters and see how the results change.
 
-    car_features = extract_features(cars, color_space=color_space, 
+    car_features = extract_features(cars, color_space=color_space, patch_size=patch_size,
                             spatial_size=spatial_size, hist_bins=hist_bins, 
                             orient=orient, pix_per_cell=pix_per_cell, 
                             cell_per_block=cell_per_block, 
                             hog_channel=hog_channel, spatial_feat=spatial_feat, 
                             hist_feat=hist_feat, hog_feat=hog_feat)
-    notcar_features = extract_features(notcars, color_space=color_space, 
+    notcar_features = extract_features(notcars, color_space=color_space, patch_size=patch_size,
                             spatial_size=spatial_size, hist_bins=hist_bins, 
                             orient=orient, pix_per_cell=pix_per_cell, 
                             cell_per_block=cell_per_block, 
@@ -351,9 +364,8 @@ def train(X_train, y_train, X_test, y_test, C=0.01):
     t=time.time()
     return accuracy, svc
 
-def gridSearch(X_train, y_train):
-    #parameters = {'C':[0.000001, 0.00001, 0.0001, 0.001, 0.01, 0.1, 1]}
-    parameters = {'C':[0.00009, 0.0001, 0.00025, 0.0005, 0.00075]}
+def gridSearch(X_train, y_train, parameters = {'C':[0.000001, 0.00001, 0.0001, 0.001, 0.01, 0.1, 1]}):
+    #parameters = {'C':[0.00009, 0.0001, 0.00025, 0.0005, 0.00075]}
     svr = LinearSVC() #svm.SVC()
     clf = GridSearchCV(svr, parameters, verbose=1, n_jobs=4)
     t=time.time()
@@ -366,7 +378,7 @@ def gridSearch(X_train, y_train):
 def searchimg(filename):
     y_start_stop = [None, None] # Min and max in y to search in slide_window()
 
-    image = mpimg.imread(filename)
+    image = cv2.cvtColor(cv2.imread(filename), cv2.COLOR_BGR2RGB)
     draw_image = np.copy(image)
 
     # Uncomment the following line if you extracted training
@@ -390,7 +402,9 @@ def searchimg(filename):
 
 
 # Define a single function that can extract features using hog sub-sampling and make predictions
-def find_cars(draw_img, img, ystart, ystop, scale, svc, X_scaler, orient, pix_per_cell, cell_per_block, spatial_size, hist_bins, color_space='RGB'):
+def find_cars(draw_img, img, ystart, ystop, scale, svc, X_scaler, orient,
+              pix_per_cell, cell_per_block, patch_size, spatial_size,
+              hist_bins, hog_channel='ALL', color_space='RGB'):
     
     #draw_img = np.copy(img)
     #img = img.astype(np.float32)/255
@@ -422,33 +436,50 @@ def find_cars(draw_img, img, ystart, ystop, scale, svc, X_scaler, orient, pix_pe
     nyblocks = (ch1.shape[0] // pix_per_cell) - cell_per_block + 1 
     nfeat_per_block = orient*cell_per_block**2
     
-    # 64 was the orginal sampling rate, with 8 cells and 8 pix per cell
-    window = 64
+    # patch_size was the orginal training patch size, with 8 cells and 8 pix per cell
+    window = patch_size[0]
     nblocks_per_window = (window // pix_per_cell) - cell_per_block + 1
     cells_per_step = 2  # Instead of overlap, define how many cells to step
     nxsteps = (nxblocks - nblocks_per_window) // cells_per_step
     nysteps = (nyblocks - nblocks_per_window) // cells_per_step
     
     # Compute individual channel HOG features for the entire image
-    hog1 = get_hog_features(ch1, orient, pix_per_cell, cell_per_block, feature_vec=False)
-    hog2 = get_hog_features(ch2, orient, pix_per_cell, cell_per_block, feature_vec=False)
-    hog3 = get_hog_features(ch3, orient, pix_per_cell, cell_per_block, feature_vec=False)
-    
+    #hog1 = get_hog_features(ch1, orient, pix_per_cell, cell_per_block, feature_vec=False)
+    #hog2 = get_hog_features(ch2, orient, pix_per_cell, cell_per_block, feature_vec=False)
+    #hog3 = get_hog_features(ch3, orient, pix_per_cell, cell_per_block, feature_vec=False)
+    if hog_channel == 'ALL':
+        hog_all = []
+        for channel in range(ctrans_tosearch.shape[2]):
+            hog_all.append(get_hog_features(ctrans_tosearch[:,:,channel], 
+                                orient, pix_per_cell, cell_per_block, 
+                                vis=False, feature_vec=False))
+    else:
+        hog_all = get_hog_features(ctrans_tosearch[:,:,hog_channel], orient, 
+                                        pix_per_cell, cell_per_block, vis=False, feature_vec=False)
+    bboxes = []
     for xb in range(nxsteps):
         for yb in range(nysteps):
             ypos = yb*cells_per_step
             xpos = xb*cells_per_step
             # Extract HOG for this patch
-            hog_feat1 = hog1[ypos:ypos+nblocks_per_window, xpos:xpos+nblocks_per_window].ravel() 
-            hog_feat2 = hog2[ypos:ypos+nblocks_per_window, xpos:xpos+nblocks_per_window].ravel() 
-            hog_feat3 = hog3[ypos:ypos+nblocks_per_window, xpos:xpos+nblocks_per_window].ravel() 
-            hog_features = np.hstack((hog_feat1, hog_feat2, hog_feat3))
+            if hog_channel == 'ALL':
+                subhog = []
+                for channel in range(ctrans_tosearch.shape[2]):
+#                hog_feat1 = hog1[ypos:ypos+nblocks_per_window, xpos:xpos+nblocks_per_window].ravel() 
+#                hog_feat2 = hog2[ypos:ypos+nblocks_per_window, xpos:xpos+nblocks_per_window].ravel() 
+#                hog_feat3 = hog3[ypos:ypos+nblocks_per_window, xpos:xpos+nblocks_per_window].ravel()
+                    subhog.append(hog_all[channel][ypos:ypos+nblocks_per_window, xpos:xpos+nblocks_per_window].ravel() )
+#                hog_features = np.hstack((hog_feat1, hog_feat2, hog_feat3))
+                hog_features = np.hstack(subhog)
+            else:
+                hog_features = hog_all[ypos:ypos+nblocks_per_window, xpos:xpos+nblocks_per_window].ravel() 
 
             xleft = xpos*pix_per_cell
             ytop = ypos*pix_per_cell
 
             # Extract the image patch
-            subimg = cv2.resize(ctrans_tosearch[ytop:ytop+window, xleft:xleft+window], (64,64))
+            #subimg = cv2.resize(ctrans_tosearch[ytop:ytop+window, xleft:xleft+window], patch_size)
+            subimg = ctrans_tosearch[ytop:ytop+window, xleft:xleft+window]
           
             # Get color features
             spatial_features = bin_spatial(subimg, size=spatial_size)
@@ -458,12 +489,98 @@ def find_cars(draw_img, img, ystart, ystop, scale, svc, X_scaler, orient, pix_pe
             test_features = X_scaler.transform(np.hstack((spatial_features, hist_features, hog_features)).reshape(1, -1))    
             #test_features = X_scaler.transform(np.hstack((shape_feat, hist_feat)).reshape(1, -1))    
             test_prediction = svc.predict(test_features)
+            confidence = svc.decision_function(test_features)
             
             if test_prediction == 1:
                 xbox_left = np.int(xleft*scale)
                 ytop_draw = np.int(ytop*scale)
                 win_draw = np.int(window*scale)
-                cv2.rectangle(draw_img,(xbox_left, ytop_draw+ystart),(xbox_left+win_draw,ytop_draw+win_draw+ystart),(0,0,1.),6) 
-                
-    return draw_img
+                cv2.rectangle(draw_img,(xbox_left, ytop_draw+ystart),(xbox_left+win_draw,ytop_draw+win_draw+ystart),(0,0,255),6) 
+                bbox = ((xbox_left, ytop_draw+ystart), (xbox_left+win_draw,ytop_draw+win_draw+ystart), confidence[0])
+                bboxes.append(bbox)
+    return bboxes, draw_img
     
+import pickle
+with open('trainedSVM64x64.p', 'rb') as file:
+    params64 = pickle.load(file)
+
+
+HEATMAPS = np.zeros(1)
+HEATMAPSIDX = 0
+
+def initialize(image, n=4):
+    global HEATMAPS, HEATMAPSIDX
+    HEATMAPS = np.zeros((n,image.shape[0],image.shape[1]), dtype=np.float)
+    HEATMAPSIDX = 0
+
+def computeHeat(image, box_list, visualize=False):
+    global HEATMAPS, HEATMAPSIDX
+    heat = np.zeros_like(image[:,:,0]).astype(np.float)
+    # Add heat to each box in box list
+    heat = add_heat(heat,box_list)
+    HEATMAPS[HEATMAPSIDX,:] = heat
+    HEATMAPSIDX += 1
+    HEATMAPSIDX %= HEATMAPS.shape[0]
+
+    heat = np.sum(HEATMAPS, axis=0) / HEATMAPS.shape[0]
+    # Apply threshold to help remove false positives
+    heat = apply_threshold(heat,1.)
+
+    # Visualize the heatmap when displaying    
+    heatmap = np.clip(heat, 0, 255)
+
+    # Find final boxes from heatmap using label function
+    labels = label(heatmap)
+    draw_img = draw_labeled_bboxes(np.copy(image), labels, heat)
+
+    if visualize:
+        fig = plt.figure(figsize=(20,10))
+        plt.subplot(121)
+        plt.imshow(draw_img)
+        plt.title('Car Positions')
+        plt.subplot(122)
+        plt.imshow(heatmap, cmap='hot')
+        plt.title('Heat Map')
+        fig.tight_layout()
+        plt.show()
+    return draw_img
+
+def processImage(image, visualize=False):
+    color_space = params64['color_space']
+    patch_size = params64['patch_size']
+    spatial_size = params64['spatial_size']
+    hist_bins = params64['hist_bins']
+    orient = params64['orient']
+    pix_per_cell = params64['pix_per_cell']
+    cell_per_block = params64['cell_per_block']
+    hog_channel = params64['hog_channel']
+    svc = params64['svc']
+    X_scalar = params64['X_scalar']
+
+    scale = 1
+    ystart=400
+    ystop=500
+    bb = np.copy(image)
+    allbboxes = []
+    bboxes, bb = find_cars(bb, image, ystart, ystop, scale, svc, X_scalar, orient, pix_per_cell, 
+                           cell_per_block, patch_size, spatial_size, hist_bins, hog_channel, color_space)
+    
+    allbboxes.extend(bboxes)
+    
+    scale = 2.0
+    ystart=400
+    ystop=650
+    bboxes, bb = find_cars(bb, image, ystart, ystop, scale, svc, X_scalar, orient, pix_per_cell, 
+                           cell_per_block, patch_size, spatial_size, hist_bins, hog_channel, color_space)
+    allbboxes.extend(bboxes)
+    
+    scale = 3.0
+    ystart=400
+    ystop=650
+    bboxes, bb = find_cars(bb, image, ystart, ystop, scale, svc, X_scalar, orient, pix_per_cell, 
+                           cell_per_block, patch_size, spatial_size, hist_bins, hog_channel, color_space)
+    allbboxes.extend(bboxes)
+    
+    annot_img = computeHeat(image, allbboxes, visualize=visualize)
+    return annot_img
+

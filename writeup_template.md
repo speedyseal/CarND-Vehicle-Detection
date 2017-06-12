@@ -81,7 +81,9 @@ Here's a [link to my video result](./project_video.mp4)
 
 ####2. Describe how (and identify where in your code) you implemented some kind of filter for false positives and some method for combining overlapping bounding boxes.
 
-I recorded the bounding boxes and SVM decision function of positive detections in each frame of the video.  From these detections I created a heatmap, using the decision function value to weight the contribution of each bounding box and then thresholded that map to identify vehicle positions.  I then used `scipy.ndimage.measurements.label()` to identify individual blobs in the heatmap.  I then assumed each blob corresponded to a vehicle.  Bounding boxes then are expanded to cover the area of each blob detected.  
+I recorded the bounding boxes and SVM decision function of positive detections in each frame of the video.  From these detections I created a heatmap, using the decision function value to weight the contribution of each bounding box and then thresholded that map to identify vehicle positions.  I then used `scipy.ndimage.measurements.label()` to identify individual blobs in the heatmap.  I then assumed each blob corresponded to a vehicle.  Bounding boxes then are expanded to cover the area of each blob detected.
+
+A parameterizable number of frames can be buffered to smooth out the detection across heatmaps. This heatmap buffer is stored in a global variable. Detections are averaged across N frames, creating a sliding moving average of detections. I used N=4.
 
 Here's an example result showing the heatmap from a series of frames of video, the result of `scipy.ndimage.measurements.label()` and the bounding boxes then overlaid on the last frame of video:
 
@@ -108,5 +110,7 @@ There are many false positives on patches of the image that contain trees, and r
 It may be necessary to have exposure correction and normalization. To be accurate, each patch for the classification should be independently normalized, however this is an expensive operation. Adaptive equalization on each frame is also rather expensive and the search procedure is already slow as it is.
 
 It would be worth exploring the parameter space of PCA dimensionality reduction to reduce the risk of overfitting, however a brief exploration into this yielded poor results (90% detection). More time needs to be spent on determining a set of basis vectors that retains classification accuracy.
+
+When cars overlap in the image, the bounding box combines, detecting only 1 vehicle instead of 2. Vehicles on the other side of the road can also be detected, even through the grate in the divider. These kinds of detector behavior can be misleading to the path planning component of the system. Bounding box detection can be informed by differences between successive frames. A vehicle is unlikely to disappear in the middle of the screen but the bounding box detection may lose track for several frames at a time. Using a predictive model of vehicle motion, for example, a Kalman filter, can help bounding box tracking or disambiguate situations where bounding boxes merge or disappear.
 
 State of the art approaches are convnet based segmentation or bounding box detection such as SSD https://arxiv.org/pdf/1512.02325.pdf or YOLO https://arxiv.org/pdf/1506.02640.pdf. These have the potential for incredible detection speedup, parallelizing the search across convnet matrix operations on a GPU.

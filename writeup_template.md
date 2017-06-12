@@ -1,6 +1,3 @@
-##Writeup Template
-###You can use this file as a template for your writeup if you want to submit it as a markdown file, but feel free to use some other method and submit a pdf if you prefer.
-
 ---
 
 **Vehicle Detection Project**
@@ -53,23 +50,25 @@ Here is an example using the `YCrCb` color space and HOG parameters of `orientat
 
 ####2. Explain how you settled on your final choice of HOG parameters.
 
-I tried various combinations of parameters and...
+I tried various combinations of parameters. I decided to use HSV color space. Evaluating the search on full windows, I found many false positives. I felt that H and S channels were too noisy to have meaningful HOG signatures, whereas the outline of the vehicle is most clear in the V channel. Reducing the number of HOG features significantly reduces the total number of SVM features to train and reduces risk of overfitting.
 
 ####3. Describe how (and identify where in your code) you trained a classifier using your selected HOG features (and color features if you used them).
 
-I trained a linear SVM using...
+I trained a linear SVM using the color histogram feature normalized to a probability density, scaled spatial features (from 64x64 to 16x16), and the HOG feature on the V channel of HSV. I used a grid search over logarithmically spaced C to find the best C parameter however for these linear SVMs, the difference in classification accuracy seems to be marginal, about 1%. The classification accuracy could vary that much depending on training set split as well.
 
 ###Sliding Window Search
 
 ####1. Describe how (and identify where in your code) you implemented a sliding window search.  How did you decide what scales to search and how much to overlap windows?
 
-I decided to search random window positions at random scales all over the image and came up with this (ok just kidding I didn't actually ;):
+Funciton find_cars at vehicledet2.py, line 482 performs the sliding window search. First HOG is computed for the entire region of interest in the image, which is specified by ystart, ystop for  the vertical region to search.
+
+Then starting at one corner, windows are scanned vertically and horizontally, skipping 2 HOG cells each time. Features are constructed from the window and the HOG cells to provide to SVM for classification. Scales are determined by resizing the original image smaller to effectively increase the search area. I chose scales of 1, 2, and 3 to scan windows of 64x64, 128x128, and 192x192, which seems to encompass vehicles up close to the window. Vehicles are still identified even with window sizes smaller than the search window. As long as these windows overlap, the vehicle can still be identified.
 
 ![alt text][image3]
 
 ####2. Show some examples of test images to demonstrate how your pipeline is working.  What did you do to optimize the performance of your classifier?
 
-Ultimately I searched on two scales using YCrCb 3-channel HOG features plus spatially binned color and histograms of color in the feature vector, which provided a nice result.  Here are some example images:
+Ultimately I searched on scales 1, 2 and 3 using HSV V-channel HOG features plus spatially binned color and normalized histograms of color in the feature vector.  Here are some example images:
 
 ![alt text][image4]
 ---
@@ -82,7 +81,7 @@ Here's a [link to my video result](./project_video.mp4)
 
 ####2. Describe how (and identify where in your code) you implemented some kind of filter for false positives and some method for combining overlapping bounding boxes.
 
-I recorded the positions of positive detections in each frame of the video.  From the positive detections I created a heatmap and then thresholded that map to identify vehicle positions.  I then used `scipy.ndimage.measurements.label()` to identify individual blobs in the heatmap.  I then assumed each blob corresponded to a vehicle.  I constructed bounding boxes to cover the area of each blob detected.  
+I recorded the bounding boxes and SVM decision function of positive detections in each frame of the video.  From these detections I created a heatmap, using the decision function value to weight the contribution of each bounding box and then thresholded that map to identify vehicle positions.  I then used `scipy.ndimage.measurements.label()` to identify individual blobs in the heatmap.  I then assumed each blob corresponded to a vehicle.  Bounding boxes then are expanded to cover the area of each blob detected.  
 
 Here's an example result showing the heatmap from a series of frames of video, the result of `scipy.ndimage.measurements.label()` and the bounding boxes then overlaid on the last frame of video:
 
@@ -104,5 +103,10 @@ Here's an example result showing the heatmap from a series of frames of video, t
 
 ####1. Briefly discuss any problems / issues you faced in your implementation of this project.  Where will your pipeline likely fail?  What could you do to make it more robust?
 
-Here I'll talk about the approach I took, what techniques I used, what worked and why, where the pipeline might fail and how I might improve it if I were going to pursue this project further.  
+There are many false positives on patches of the image that contain trees, and road. Also when the white car is on the concrete segment of the freeway, detection drops out. It could be that the training set only has cars on asphalt, or a large fraction of the training set is backlit. SVM works great on medium sized data sets but is less effective with large datasets so it is important to review the data set more carefully.
 
+It may be necessary to have exposure correction and normalization. To be accurate, each patch for the classification should be independently normalized, however this is an expensive operation. Adaptive equalization on each frame is also rather expensive and the search procedure is already slow as it is.
+
+It would be worth exploring the parameter space of PCA dimensionality reduction to reduce the risk of overfitting, however a brief exploration into this yielded poor results (90% detection). More time needs to be spent on determining a set of basis vectors that retains classification accuracy.
+
+State of the art approaches are convnet based segmentation or bounding box detection such as SSD https://arxiv.org/pdf/1512.02325.pdf or YOLO https://arxiv.org/pdf/1506.02640.pdf. These have the potential for incredible detection speedup, parallelizing the search across convnet matrix operations on a GPU.

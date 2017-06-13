@@ -103,7 +103,7 @@ There are many false positives on patches of the image that contain trees, and r
 
 It may be necessary to have exposure correction and normalization. To be accurate, each patch for the classification should be independently normalized, however this is an expensive operation. Adaptive equalization on each frame is also rather expensive and the search procedure is already slow as it is.
 
-It would be worth exploring the parameter space of PCA dimensionality reduction to reduce the risk of overfitting, however a brief exploration into this yielded poor results (90% detection). More time needs to be spent on determining a set of basis vectors that retains classification accuracy.
+It would be worth exploring the parameter space of PCA dimensionality reduction to reduce the risk of overfitting, however a brief exploration into this yielded poor results (90% detection). More time needs to be spent on determining a set of basis vectors that retains classification accuracy using the tools found in sklearn `pipeline` and `grid_search`.
 
 When cars overlap in the image, the bounding box combines, detecting only 1 vehicle instead of 2. Vehicles on the other side of the road can also be detected, even through the grate in the divider. These kinds of detector behavior can be misleading to the path planning component of the system. Bounding box detection can be informed by differences between successive frames. A vehicle is unlikely to disappear in the middle of the screen but the bounding box detection may lose track for several frames at a time. Using a predictive model of vehicle motion, for example, a Kalman filter, can help bounding box tracking or disambiguate situations where bounding boxes merge or disappear.
 

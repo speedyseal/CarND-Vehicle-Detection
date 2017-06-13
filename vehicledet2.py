@@ -7,6 +7,7 @@ import time
 from sklearn import svm
 from sklearn.svm import LinearSVC
 from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
 from skimage.feature import hog
 # NOTE: the next import is only valid for scikit-learn version <= 0.17
 # for scikit-learn >= 0.18 use:
@@ -278,9 +279,17 @@ def computeHeatSingle(image, box_list, visualize=False):
         plt.imshow(draw_img)
         plt.title('Car Positions')
         plt.subplot(122)
-        plt.imshow(heatmap, cmap='hot')
+        plt.imshow(heat, cmap='hot')
         plt.title('Heat Map')
         fig.tight_layout()
+        plt.show()
+        fig = plt.figure(figsize=(20,10))
+        plt.subplot(121)
+        plt.imshow(labels)
+        plt.title('Output of label')
+        plt.subplot(122)
+        plt.imshow(draw_img)
+        plt.title('Smoothed bounding box')
         plt.show()
     return draw_img
 
@@ -349,6 +358,82 @@ def preprocessData(color_space = 'HSV', # Can be RGB, HSV, LUV, HLS, YUV, YCrCb
     print('Feature vector length:', len(X_train[0]))
     return (X_train, y_train, X_test, y_test, X_scaler, params)
     
+def preprocessPCA(color_space = 'HSV', # Can be RGB, HSV, LUV, HLS, YUV, YCrCb
+          orient = 9,  # HOG orientations
+          pix_per_cell = 8, # HOG pixels per cell
+          cell_per_block = 2, # HOG cells per block
+          hog_channel = 'ALL', # Can be 0, 1, 2, or "ALL"
+          patch_size = (64, 64),
+          spatial_size = (16, 16), # Spatial binning dimensions
+          hist_bins = 16,    # Number of histogram bins
+          spatial_feat = True, # Spatial features on or off
+          hist_feat = True, # Histogram features on or off
+          hog_feat = True # HOG features on or off
+):
+    params = {'color_space':color_space, 'orient':orient, 'pix_per_cell':pix_per_cell,
+              'cell_per_block':cell_per_block, 'hog_channel':hog_channel, 'patch_size':patch_size,
+              'spatial_size':spatial_size,
+              'hist_bins':hist_bins}
+
+    cars = glob.glob('vehicles/**/*.png')
+    notcars = glob.glob('non-vehicles/**/*.png')
+
+
+    # limit sample size for debug
+    if False:
+        sample_size = 500
+        cars = cars[0:sample_size]
+        notcars = notcars[0:sample_size]
+
+    ### TODO: Tweak these parameters and see how the results change.
+
+    car_features = extract_features(cars, color_space=color_space, patch_size=patch_size,
+                            spatial_size=spatial_size, hist_bins=hist_bins, 
+                            orient=orient, pix_per_cell=pix_per_cell, 
+                            cell_per_block=cell_per_block, 
+                            hog_channel=hog_channel, spatial_feat=spatial_feat, 
+                            hist_feat=hist_feat, hog_feat=hog_feat)
+    notcar_features = extract_features(notcars, color_space=color_space, patch_size=patch_size,
+                            spatial_size=spatial_size, hist_bins=hist_bins, 
+                            orient=orient, pix_per_cell=pix_per_cell, 
+                            cell_per_block=cell_per_block, 
+                            hog_channel=hog_channel, spatial_feat=spatial_feat, 
+                            hist_feat=hist_feat, hog_feat=hog_feat)
+    X = np.vstack((car_features, notcar_features)).astype(np.float64)
+
+    print(X.shape)
+    pcaa = PCA() #n_components='mle',  svd_solver='full')
+    pcaa.fit(X)
+
+    # choose num components
+    ncomp = np.sum(pcaa.explained_variance_ratio_ > 1e-5)
+    pca = PCA(n_components = ncomp)
+    X = pca.fit_transform(X)
+
+    # Fit a per-column scaler
+    X_scaler = StandardScaler().fit(X)
+    # Apply the scaler to X
+    scaled_X = X_scaler.transform(X)
+
+    # Define the labels vector
+    y = np.hstack((np.ones(len(car_features)), np.zeros(len(notcar_features))))
+
+
+    # Split up data into randomized training and test sets
+    rand_state = np.random.randint(0, 100)
+    # use fixed split to compare parameters
+    #rand_state = 0
+    X_train, X_test, y_train, y_test = train_test_split(
+        scaled_X, y, test_size=0.2, random_state=rand_state)
+
+    print('Using:',orient,'orientations',pix_per_cell,
+        'pixels per cell and', cell_per_block,'cells per block')
+    print('Feature vector length:', len(X_train[0]))
+    params['X_scaler'] = X_scaler
+    params['pca'] = pca
+    return (X_train, y_train, X_test, y_test, X_scaler, params)
+
+
 def train(X_train, y_train, X_test, y_test, C=0.01):
     # Use a linear SVC 
     svc = LinearSVC(C=C)
@@ -404,7 +489,7 @@ def searchimg(filename):
 # Define a single function that can extract features using hog sub-sampling and make predictions
 def find_cars(draw_img, img, ystart, ystop, scale, svc, X_scaler, orient,
               pix_per_cell, cell_per_block, patch_size, spatial_size,
-              hist_bins, hog_channel='ALL', color_space='RGB'):
+              hist_bins, params, hog_channel='ALL', color_space='RGB'):
     
     #draw_img = np.copy(img)
     #img = img.astype(np.float32)/255
@@ -486,7 +571,9 @@ def find_cars(draw_img, img, ystart, ystop, scale, svc, X_scaler, orient,
             hist_features = color_hist(subimg, nbins=hist_bins)
 
             # Scale features and make a prediction
-            test_features = X_scaler.transform(np.hstack((spatial_features, hist_features, hog_features)).reshape(1, -1))    
+            test_features = np.hstack((spatial_features, hist_features, hog_features)).reshape(1, -1)
+#            test_features = params['pca'].transform(test_features)
+            test_features = X_scaler.transform(test_features)
             #test_features = X_scaler.transform(np.hstack((shape_feat, hist_feat)).reshape(1, -1))    
             test_prediction = svc.predict(test_features)
             confidence = svc.decision_function(test_features)
@@ -522,9 +609,9 @@ def computeHeat(image, box_list, visualize=False):
     HEATMAPSIDX += 1
     HEATMAPSIDX %= HEATMAPS.shape[0]
 
-    heat = np.sum(HEATMAPS, axis=0) / HEATMAPS.shape[0]
+    heatavg = np.sum(HEATMAPS, axis=0) / HEATMAPS.shape[0]
     # Apply threshold to help remove false positives
-    heat = apply_threshold(heat,1.)
+    heat = apply_threshold(heatavg,0.25)
 
     # Visualize the heatmap when displaying    
     heatmap = np.clip(heat, 0, 255)
@@ -539,9 +626,18 @@ def computeHeat(image, box_list, visualize=False):
         plt.imshow(draw_img)
         plt.title('Car Positions')
         plt.subplot(122)
-        plt.imshow(heatmap, cmap='hot')
+        plt.imshow(heatavg, cmap='hot')
         plt.title('Heat Map')
         fig.tight_layout()
+        plt.show()
+
+        fig = plt.figure(figsize=(20,10))
+        plt.subplot(121)
+        plt.imshow(labels[0])
+        plt.title('Output of label')
+        plt.subplot(122)
+        plt.imshow(draw_img)
+        plt.title('Smoothed bounding box')
         plt.show()
     return draw_img
 
@@ -563,7 +659,7 @@ def processImage(image, visualize=False):
     bb = np.copy(image)
     allbboxes = []
     bboxes, bb = find_cars(bb, image, ystart, ystop, scale, svc, X_scalar, orient, pix_per_cell, 
-                           cell_per_block, patch_size, spatial_size, hist_bins, hog_channel, color_space)
+                           cell_per_block, patch_size, spatial_size, hist_bins, params64, hog_channel, color_space)
     
     allbboxes.extend(bboxes)
     
@@ -571,14 +667,14 @@ def processImage(image, visualize=False):
     ystart=400
     ystop=650
     bboxes, bb = find_cars(bb, image, ystart, ystop, scale, svc, X_scalar, orient, pix_per_cell, 
-                           cell_per_block, patch_size, spatial_size, hist_bins, hog_channel, color_space)
+                           cell_per_block, patch_size, spatial_size, hist_bins, params64, hog_channel, color_space)
     allbboxes.extend(bboxes)
     
     scale = 3.0
     ystart=400
     ystop=650
     bboxes, bb = find_cars(bb, image, ystart, ystop, scale, svc, X_scalar, orient, pix_per_cell, 
-                           cell_per_block, patch_size, spatial_size, hist_bins, hog_channel, color_space)
+                           cell_per_block, patch_size, spatial_size, hist_bins, params64, hog_channel, color_space)
     allbboxes.extend(bboxes)
     
     annot_img = computeHeat(image, allbboxes, visualize=visualize)

@@ -7,10 +7,13 @@
 [hsvhog1]: ./output_images/hsvhog1.png "HOG features"
 [hsvhog2]: ./output_images/hsvhog2.png "HOG features"
 [hsvhog3]: ./output_images/hsvhog3.png "HOG features"
-[binary]: ./output_images/binary.png "Binary Example"
-[lanefit]: ./output_images/lanefit.png "Fit Visual"
-[annotated]: ./output_images/annotated.png "Output"
-[video1]: ./project_video.mp4 "Video"
+[boxdetect1]: ./output_images/boxdetect1.png "Bounding box around vehicles on I280"
+[boxdetect2]: ./output_images/boxdetect2.png "Bounding box around vehicles on I280"
+[heat1]: ./output_images/heat1.png "Heatmap frame 1"
+[heat2]: ./output_images/heat2.png "Heatmap frame 2"
+[heat3]: ./output_images/heat3.png "Heatmap frame 3"
+[heat4]: ./output_images/heat4.png "Heatmap frame 4"
+[label]: ./output_images/label.png "Output of label"
 
 #### 1. Provide a Writeup / README that includes all the rubric points and how you addressed each one.  You can submit your writeup as markdown or pdf.  [Here](https://github.com/udacity/CarND-Vehicle-Detection/blob/master/writeup_template.md) is a template writeup for this project you can use as a guide and a starting point.  
 
@@ -38,7 +41,7 @@ Here is an example using the `HSV` color space and HOG parameters of `orientatio
 
 #### 2. Explain how you settled on your final choice of HOG parameters.
 
-I tried various combinations of parameters. I decided to use HSV color space. Evaluating the search on full windows, I found many false positives. I felt that H and S channels were too noisy to have meaningful HOG signatures, whereas the outline of the vehicle is most clear in the V channel. Reducing the number of HOG features significantly reduces the total number of SVM features to train and reduces risk of overfitting.
+I tried various combinations of parameters. I decided to use HSV color space. Evaluating the search on full windows, I found many false positives. I felt that H and S channels were too noisy and inconsistent to have meaningful HOG signatures, whereas the outline of the vehicle is most clear in the V channel. Reducing the number of HOG features significantly reduces the total number of SVM features to train and reduces risk of overfitting.
 
 #### 3. Describe how (and identify where in your code) you trained a classifier using your selected HOG features (and color features if you used them).
 
@@ -52,20 +55,23 @@ Funciton find_cars at vehicledet2.py, line 482 performs the sliding window searc
 
 Then starting at one corner, windows are scanned vertically and horizontally, skipping 2 HOG cells each time. Features are constructed from the window and the HOG cells to provide to SVM for classification. Scales are determined by resizing the original image smaller to effectively increase the search area. I chose scales of 1, 2, and 3 to scan windows of 64x64, 128x128, and 192x192, which seems to encompass vehicles up close to the window. Vehicles are still identified even with window sizes smaller than the search window. As long as these windows overlap, the vehicle can still be identified.
 
-![alt text][image3]
-
 #### 2. Show some examples of test images to demonstrate how your pipeline is working.  What did you do to optimize the performance of your classifier?
 
 Ultimately I searched on scales 1, 2 and 3 using HSV V-channel HOG features plus spatially binned color and normalized histograms of color in the feature vector.  Here are some example images:
 
-![alt text][image4]
+The HOG is computed once to avoid recomputation of shared HOG cells. The SVM was trained on just HOG the V channel to save some computation. The SVM was trained with various settings of C using `grid_search` to find the value that yielded the best accuracy.
+
+The following examples show the results of bounding box detection.
+
+![alt text][boxdetect1]
+![alt text][boxdetect2]
 ---
 
 ### Video Implementation
 
 #### 1. Provide a link to your final video output.  Your pipeline should perform reasonably well on the entire project video (somewhat wobbly or unstable bounding boxes are ok as long as you are identifying the vehicles most of the time with minimal false positives.)
-Here's a [link to my video result](./project_video.mp4)
-
+Here's my video result:
+[![link to my video result](http://img.youtube.com/vi/fWDEjpqeEqA/0.jpg)](https://youtu.be/fWDEjpqeEqA)
 
 #### 2. Describe how (and identify where in your code) you implemented some kind of filter for false positives and some method for combining overlapping bounding boxes.
 
@@ -75,16 +81,16 @@ A parameterizable number of frames can be buffered to smooth out the detection a
 
 Here's an example result showing the heatmap from a series of frames of video, the result of `scipy.ndimage.measurements.label()` and the bounding boxes then overlaid on the last frame of video:
 
-### Here are six frames and their corresponding heatmaps:
+### Here are 4 frames and their corresponding heatmaps:
 
-![alt text][image5]
+![alt text][heat1]
+![alt text][heat2]
+![alt text][heat3]
+![alt text][heat4]
 
-### Here is the output of `scipy.ndimage.measurements.label()` on the integrated heatmap from all six frames:
-![alt text][image6]
 
-### Here the resulting bounding boxes are drawn onto the last frame in the series:
-![alt text][image7]
-
+### Here is the output of `scipy.ndimage.measurements.label()` on the integrated heatmap from all 4 frames, with the resulting bounding boxes drawn onto the last frame in the series:
+![alt text][label]
 
 
 ---

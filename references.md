@@ -11,3 +11,6 @@
 
 - _DeepLab: Semantic Image Segmentation with Deep Convolutional Nets, Atrous Convolution, and Fully Connected CRFs_, Liang-Chieh Chen, George Papandreou, Iasonas Kokkinos, Kevin Murphy, Alan L. Yuille, 2016
 [https://arxiv.org/abs/1606.00915](https://arxiv.org/abs/1606.00915)
+
+- _OverFeat: Integrated Recognition, Localization and Detection using Convolutional Networks_, Pierre Sermanet, David Eigen, Xiang Zhang, Michael Mathieu, Rob Fergus, Yann LeCun, 2013
+[https://arxiv.org/abs/1312.6229](https://arxiv.org/abs/1312.6229)

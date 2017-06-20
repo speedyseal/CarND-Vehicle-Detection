@@ -14,3 +14,8 @@
 
 - _OverFeat: Integrated Recognition, Localization and Detection using Convolutional Networks_, Pierre Sermanet, David Eigen, Xiang Zhang, Michael Mathieu, Rob Fergus, Yann LeCun, 2013
 [https://arxiv.org/abs/1312.6229](https://arxiv.org/abs/1312.6229)
+
+- _Multi-Task Learning Using Uncertainty to Weigh Losses for Scene Geometry and Semantics_, Alex Kendall, Yarin Gal, Roberto Cipolla, 2017
+[https://arxiv.org/abs/1705.07115](https://arxiv.org/abs/1705.07115)
+
+- _Learning Features by Watching Objects Move_, Deepak Pathak, Ross Girshick, Piotr Dollár, Trevor Darrell, Bharath Hariharan, 2017, [https://arxiv.org/abs/1612.06370](https://arxiv.org/abs/1612.06370)
